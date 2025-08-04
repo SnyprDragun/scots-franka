@@ -30,7 +30,7 @@ const int nint=5;
 OdeSolver ode_solver(sDIM,nint,tau);
 
 /* we integrate the franka ode by 0.3 sec (the result is stored in x)  */
-auto  franka_post = [](state_type &x, input_type &u) -> void {
+auto  vehicle_post = [](state_type &x, input_type &u) -> void {
 
   /* the ode describing the franka */
   auto rhs =[](state_type& xx,  const state_type &x, input_type &u) {
@@ -43,10 +43,28 @@ auto  franka_post = [](state_type &x, input_type &u) -> void {
 };
 
 /* computation of the growth bound (the result is stored in r)  */
-auto radius_post = [](state_type &r, input_type &u) {
+auto vehicle_radius_post = [](state_type &r, input_type &u) {
     double c = std::abs(u[0]*std::sqrt(std::tan(u[1])*std::tan(u[1])/4.0+1));
     r[0] = r[0]+c*r[2]*0.3;
     r[1] = r[1]+c*r[2]*0.3;
+};
+
+/* we integrate the unicycle ode by 0.3 sec (the result is stored in x)  */
+auto  unicycle_post = [](state_type &x, input_type &u) -> void {
+
+  /* the ode describing the unicycle */
+  auto rhs =[](state_type& xx,  const state_type &x, input_type &u) -> void {
+      xx[0] = u[0]*std::cos(x[2]);
+      xx[1] = u[0]*std::sin(x[2]);
+      xx[2] = u[1];
+  };
+  ode_solver(rhs,x,u);
+};
+
+/* computation of the growth bound (the result is stored in r)  */
+auto unicycle_radius_post = [](state_type &r, input_type &u) -> void {
+    r[0] = r[0]+r[2]*std::abs(u[0])*0.3;
+    r[1] = r[1]+r[2]*std::abs(u[0])*0.3;
 };
 
 /* forward declaration of the functions to setup the state space
@@ -111,20 +129,30 @@ int main() {
    * by copying the SymbolicSet of the state space and assigning new BDD IDs */
   scots::SymbolicSet sspost(ss,1);
   /* instantiate the SymbolicModel */
-  scots::SymbolicModelGrowthBound<state_type,input_type> abstraction(&ss, &is, &sspost);
+  scots::SymbolicModelGrowthBound<state_type,input_type> abstraction1(&ss, &is, &sspost);
   /* compute the transition relation */
   tt.tic();
-  abstraction.computeTransitionRelation(franka_post, radius_post);
+  abstraction1.computeTransitionRelation(vehicle_post, vehicle_radius_post);
   std::cout << std::endl;
   tt.toc();
   /* get the number of elements in the transition relation */
-  std::cout << std::endl << "Number of elements in the transition relation: " << abstraction.getSize() << std::endl;
+  std::cout << std::endl << "Number of elements in the transition relation: " << abstraction1.getSize() << std::endl;
+
+  /* instantiate the SymbolicModel */
+  scots::SymbolicModelGrowthBound<state_type,input_type> abstraction2(&ss, &is, &sspost);
+  /* compute the transition relation */
+  tt.tic();
+  abstraction2.computeTransitionRelation(unicycle_post, unicycle_radius_post);
+  std::cout << std::endl;
+  tt.toc();
+  /* get the number of elements in the transition relation */
+  std::cout << std::endl << "Number of elements in the transition relation: " << abstraction2.getSize() << std::endl;
 
   /****************************************************************************/
   /* we continue with the controller synthesis */
   /****************************************************************************/
   /* we setup a fixed point object to compute reachabilty controller */
-  scots::FixedPoint fp1(&abstraction);
+  scots::FixedPoint fp1(&abstraction1);
   /* the fixed point algorithm operates on the BDD directly */
   BDD T1 = ts1.getSymbolicSet();
   BDD O = obs.getSymbolicSet();
@@ -133,7 +161,7 @@ int main() {
   BDD C1=fp1.reachAvoid(T1,O,1);
   tt.toc();
 
-  scots::FixedPoint fp2(&abstraction);
+  scots::FixedPoint fp2(&abstraction2);
   /* the fixed point algorithm operates on the BDD directly */
   BDD T2 = ts2.getSymbolicSet();
   tt.tic();

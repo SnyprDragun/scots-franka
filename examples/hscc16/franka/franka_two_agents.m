@@ -39,7 +39,7 @@ while(1)
   u2=controller2.getInputs(y2(end,:));
 
   v1=[v1; u1(1,:)];
-  [t x1]=ode45(@unicycle_ode,[0 .3], y1(end,:), [],u1(1,:));
+  [t x1]=ode45(@vehicle_ode,[0 .3], y1(end,:), [],u1(1,:));
 
   y1=[y1; x1(end,:)];
 
@@ -89,7 +89,7 @@ axis([-.5 10.5 -.5 10.5])
 
 end
 
-function dxdt = unicycle_ode(t,x,u)
+function dxdt = vehicle_ode(t,x,u)
 
   dxdt = zeros(3,1);
   c=atan(tan(u(2))/2);
@@ -100,6 +100,19 @@ function dxdt = unicycle_ode(t,x,u)
 
 
 end
+
+
+function dxdt = unicycle_ode(t,x,u)
+
+  dxdt = zeros(3,1);
+
+  dxdt(1)=u(1)*cos(x(3));
+  dxdt(2)=u(1)*sin(x(3));
+  dxdt(3)=u(2);
+
+
+end
+
 
 function plot_domain
 
@@ -117,4 +130,3 @@ v=[4.6   1  ;4.8  1   ; 4.6   10   ; 4.8 10  ];
 patch('vertices',v,'faces',[1 2 4 3],'facec',colors(1,:),'edgec',colors(1,:));
 
 end
-
