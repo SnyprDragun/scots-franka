@@ -1,0 +1,148 @@
+clc; clear; close all;
+
+%% Parameters
+n = 3; % Number of links (arbitrary positive integer)
+L = ones(1, n); % Link lengths (can be varied per link)
+dt = 0.01;
+duration = 2000;
+
+% Load SCOTS data
+data = readmatrix('franka_nlink_single_integrator.csv');
+states_data = data(:, 1:2*n);
+inputs_data = data(:, 2*n+1:end);
+states_quant = 0.06 * ones(2*n, 1);
+
+% Initial states: [theta1..theta_n, theta1_dot..theta_n_dot]
+states = linspace(-0.5, 0.5, n)';  % initial joint angles
+states = [states; zeros(n, 1)];    % add joint velocities
+
+% Storage
+states_hist = states';
+inputs_hist = [];
+end_effector_traj = [];
+
+%% Figure setup
+figure;
+hold on; axis equal;
+xlim([-sum(L)-0.5, sum(L)+0.5]);
+ylim([-sum(L)-0.5, sum(L)+0.5]);
+grid on;
+
+% Plot handles
+link_lines = gobjects(1, n);
+joint_points = gobjects(1, n);
+for i = 1:n
+    link_lines(i) = plot([0, 0], [0, 0], 'LineWidth', 4);
+    joint_points(i) = plot(0, 0, 'o', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
+end
+end_effector = plot(0, 0, 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+trajectory_plot = plot(0, 0, 'k:', 'LineWidth', 2.5);
+
+%% Simulation loop
+for i = 1:duration
+    % Controller from SCOTS data
+    ctrl_torque = arm_controller(states, states_data, inputs_data, states_quant);
+    
+    % Update states
+    states = update_states(states, ctrl_torque, dt, n);
+    
+    % Store history
+    inputs_hist = [inputs_hist; ctrl_torque'];
+    states_hist = [states_hist; states'];
+    
+    % Forward kinematics
+    [joint_pos, ee_pos] = forward_kinematics(states(1:n), L);
+    end_effector_traj = [end_effector_traj; ee_pos];
+    
+    % Update plot
+    prev_point = [0; 0];
+    for j = 1:n
+        set(link_lines(j), 'XData', [prev_point(1), joint_pos(j, 1)], ...
+                           'YData', [prev_point(2), joint_pos(j, 2)]);
+        set(joint_points(j), 'XData', joint_pos(j, 1), ...
+                             'YData', joint_pos(j, 2));
+        prev_point = joint_pos(j, :)';
+    end
+    set(end_effector, 'XData', ee_pos(1), 'YData', ee_pos(2));
+    set(trajectory_plot, 'XData', end_effector_traj(:,1), ...
+                         'YData', end_effector_traj(:,2));
+    xlabel("x --->"); ylabel("y --->");
+    title("N-Link Arm End Effector Trajectory");
+    pause(0.01);
+end
+
+%% Plot joint angles
+time = (1:size(states_hist, 1)) * dt;
+figure;
+plot(time, states_hist(:, 1:n), 'LineWidth', 1.5);
+xlabel('Time (s)'); ylabel('Joint Angles (rad)');
+title('Joint Angles vs Time'); grid on;
+
+%% Plot joint velocities
+figure;
+plot(time, states_hist(:, n+1:2*n), 'LineWidth', 1.5);
+xlabel('Time (s)'); ylabel('Joint Velocities (rad/s)');
+title('Joint Velocities vs Time'); grid on;
+
+%% Plot control inputs
+figure;
+plot(time(1:length(inputs_hist)), inputs_hist, 'LineWidth', 1.5);
+xlabel('Time (s)'); ylabel('Control Inputs (Nm)');
+title('Control Inputs vs Time'); grid on;
+
+% Functions
+function ctrl_torque = arm_controller(states, states_data, inputs_data, states_quant)
+    common_index = true(size(states_data, 1), 1);
+    for i = 1:length(states)
+        common_index = common_index & abs(states(i) - states_data(:, i)) <= states_quant(i) / 2;
+    end
+    if any(common_index)
+        ctrl_torque = inputs_data(find(common_index, 1), :)';
+    else
+        ctrl_torque = zeros(length(states)/2, 1);
+    end
+end
+
+% function ctrl_torque = arm_controller(states, states_data, inputs_data, states_quant)
+%     n = length(states)/2;
+%     q = states(1:n);
+%     qdot = states(n+1:end);
+% 
+%     % Simple PD controller toward target = [pi/4, 0,...,0]
+%     q_des = pi/4*ones(n,1);
+%     Kp = 1; Kd = 2;
+%     ctrl_torque = Kp*(q_des - q) - Kd*qdot;
+% end
+
+function states = update_states(states, u, dt, n)
+    q = states(1:n);
+    qdot = states(n+1:end);
+    
+    % Simple independent joint dynamics: I*qddot = u - damping
+    I = 1.0;  % inertia per joint
+    damping = 0.1;
+    qddot = (u - damping*qdot) / I;
+    
+    % Euler integration
+    q = q + qdot * dt;
+    qdot = qdot + qddot * dt;
+    
+    % Wrap angles
+    q = mod(q + pi, 2*pi) - pi;
+    
+    states = [q; qdot];
+end
+
+function [joint_positions, ee_pos] = forward_kinematics(q, L)
+    n = length(q);
+    joint_positions = zeros(n, 2);
+    T = eye(3);
+    total_angle = 0;
+    pos = [0; 0];
+    for i = 1:n
+        total_angle = total_angle + q(i);
+        pos = pos + L(i) * [cos(total_angle); sin(total_angle)];
+        joint_positions(i, :) = pos';
+    end
+    ee_pos = pos';
+end
