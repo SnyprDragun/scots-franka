@@ -1,0 +1,36 @@
+
+A reactive path planning problem for a unicycle dynamics modeling the Khepera 4
+robot
+
+0. To run this example, you need to the Cudd libarary installed. Please see the
+   manual for installation notes.
+
+1. edit the Makefile 
+   adjust the compiler to your programming environment
+
+2. compile the synthesis.cc
+   $ make
+   in a terminal
+
+3. execute 
+
+  $./synthesis
+
+  which produces
+
+  ./controller.scs
+  ./controller.bdd
+  ./obstacles.scs
+  ./obstacles.bdd
+  ./target.scs
+  ./target.bdd
+  ./gate.scs
+  ./gate.bdd
+
+4. simulate the closed loop in MATLAB 
+  a) you need to compile the mexfile first (see the readme in $(SCOTSROOT)/mfiles/mexfiles )
+  b) in Matlab add the path and run the simulation 
+   >> addpath(genpath('../../mfiles'))
+   >> simulate
+
+
